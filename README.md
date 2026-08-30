@@ -1,6 +1,6 @@
 # iCEBreaker DSP
 
-Open-source iCEBreaker FPGA DSP project: an **8-voice sine oscillator bank**
+Open-source iCEBreaker FPGA DSP project: a **single sine oscillator**
 streamed over **I2S to a PCM5102A DAC**.
 
 ## Target
@@ -10,13 +10,15 @@ streamed over **I2S to a PCM5102A DAC**.
 
 ## Functionality
 
-- 8 DDS sine oscillators (A2, C#3, E3, A3, B3, C4, E4, A4) mixed to mono
-- 16-bit signed samples, 1 kHz-resolution phase accumulators, sine LUT in BRAM
-- I2S transmitter: Fs = 46.875 kHz, BCK ~3 MHz, 16-bit per channel (mono on both)
-- Sample rate derived directly from the 12 MHz board clock
+- One DDS sine oscillator (default A3 = 220 Hz), 16-bit signed samples
+- Phase accumulator advances on every 12 MHz clock; combinational-ish BRAM
+  wavetable read means the sample always tracks the current phase (no glitches)
+- I2S serializer: 16-bit per channel, mono duplicated on both channels
+- Sample/frame rate ≈ 187.5 kHz (12 MHz / 64), BCK ~6 MHz
+- Architecture mirrors the proven `noscene/ice40_audio` PCM5102 driver
 
-Edit the `TW0..TW7` tuning words in `src/top.sv` to change frequencies
-(`tuning = round(freq * 2^32 / 46875)`).
+Change frequency by editing the `TW` tuning word in `src/top.sv`:
+`tuning = round(freq * 2^32 / 12e6)` (e.g. 220 Hz → 78741).
 
 ## Wiring: PCM5102A DAC -> PMOD1A
 
