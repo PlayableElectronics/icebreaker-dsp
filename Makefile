@@ -6,8 +6,10 @@ all: $(BUILD)/$(TOP).bin
 $(BUILD):
 	mkdir -p $(BUILD)
 
-$(BUILD)/$(TOP).json: src/$(TOP).sv | $(BUILD)
-	yosys -p "read_verilog -sv src/$(TOP).sv; synth_ice40 -top $(TOP) -json $@"
+SRCS = src/top.sv src/uart.sv
+
+$(BUILD)/$(TOP).json: $(SRCS) | $(BUILD)
+	yosys -p "read_verilog -sv $(SRCS); synth_ice40 -top $(TOP) -json $@"
 
 $(BUILD)/$(TOP).asc: $(BUILD)/$(TOP).json icebreaker.pcf
 	nextpnr-ice40 \

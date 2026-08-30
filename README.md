@@ -55,6 +55,41 @@ make
 Bitstream: `build/top.bin` (program with `iceprog`, or via the iCEBreaker FTDI).
 GitHub Actions CI builds and uploads the bitstream as an artifact on every push.
 
+## UI + UART host link
+
+The same USB programming cable (FT2232H channel B) exposes a virtual COM port,
+so the host can control the synth with **no extra hardware**. The link is a raw
+asynchronous byte stream (`src/uart.sv`: 8-N-1, 115200 baud, from 12 MHz).
+
+| signal   | FPGA pin | direction | note |
+|----------|----------|-----------|------|
+| `uart_rx`| 6        | PC → FPGA | FTDI BDBUS1 |
+| `uart_tx`| 9        | FPGA → PC | FTDI BDBUS0 |
+
+**`index.html`** is a self-contained Web-Serial controller: faders for the LFO
+rate, LFO depth, and per-oscillator **level** and **detune**. Open it in
+Chrome/Edge/Opera, click **Connect**, pick the iCEBreaker's virtual COM port
+(e.g. `/dev/cu.usbserial-*` on macOS), and drag the faders to live-tune the
+synth.
+
+### Wire protocol
+
+Frames are 3 bytes: `[SYNC 0xEE][PARAM][VALUE]`, which writes `params[PARAM]`.
+Any byte equal to `0xEE` re-syncs a fresh frame, so the stream self-recovers.
+The applied `VALUE` is echoed back over TX as confirmation.
+
+| PARAM | name      | range | effect |
+|-------|-----------|-------|--------|
+| `0x10`| `P_LFO_RATE`  | 0..255 | `host_tlfo = V * TLFO` (0 = off, 1 ≈ 6 Hz) |
+| `0x11`| `P_LFO_DEPTH` | 0..15  | FM depth (0 deepest, 15 shallowest) |
+| `0x20`+i| `P_VOICE0+i`| 0..255 | per-osc level (255 = full) |
+| `0x30`+i| `P_DETUNE0+i`| 0..255 | per-osc pitch = `V/128` (128 = x1.0, 255 ≈ octave up) |
+
+Detune is implemented as a slow control: when a detune fader changes, the FPGA
+recomputes all 8 scaled tuning words through a single time-multiplexed
+multiplier, keeping the audio-rate phase accumulators as cheap adds. This is
+the transport the future MIDI/opcode parameter stream will ride on.
+
 ## Fast test loop
 
 ```bash

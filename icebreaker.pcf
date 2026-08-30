@@ -14,3 +14,9 @@ set_io dout 47
 
 # PCM5102A soft-mute (high = un-muted)
 set_io xmute 3
+
+# UART to host via onboard FT2232H (Channel B) -> virtual COM port
+#   pin 6 = RX (PC -> FPGA, FTDI BDBUS1)
+#   pin 9 = TX (FPGA -> PC, FTDI BDBUS0)
+set_io uart_rx 6
+set_io uart_tx 9

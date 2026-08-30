@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>iCEBreaker DSP Controller</title>
+<style>
+  :root {
+    --bg: #12141a; --panel: #1c2029; --panel2: #232836;
+    --text: #dce2ef; --muted: #7a8498; --accent: #4f8cff; --line: #2c3342;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.4 system-ui, -apple-system, Segoe UI, sans-serif;
+    padding: 24px;
+  }
+  h1 { font-size: 18px; margin: 0 0 4px; letter-spacing: .2px; }
+  .sub { color: var(--muted); font-size: 12px; margin-bottom: 18px; }
+  .bar { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+  button {
+    border: 1px solid var(--line); background: var(--accent); color: #fff;
+    padding: 9px 16px; border-radius: 8px; font-size: 14px; cursor: pointer;
+  }
+  button:disabled { opacity: .45; cursor: default; }
+  button.secondary { background: var(--panel2); color: var(--text); }
+  #status { font-size: 13px; color: var(--muted); }
+  #status.on { color: #53d18e; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 14px;
+  }
+  .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--muted); margin: 0 0 12px; }
+  .row { display: flex; flex-direction: column; margin-bottom: 12px; }
+  .row:last-child { margin-bottom: 0; }
+  .lbl { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
+  .lbl .val { color: var(--accent); font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .hint { font-size: 11px; color: var(--muted); margin-top: 8px; }
+  .note { font-size: 12px; color: var(--muted); margin-top: 22px; line-height: 1.6; }
+  code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<h1>iCEBreaker DSP Controller</h1>
+<div class="sub">8-voice sine bank · LFO FM · PCM5102A I2S DAC · host link via serial</div>
+
+<div class="bar">
+  <button id="connect">Connect</button>
+  <span id="status">no port connected</span>
+</div>
+
+<div class="grid">
+  <div class="panel">
+    <h2>LFO</h2>
+    <div class="row">
+      <div class="lbl"><span>Rate</span><span class="val" id="v_lfo_rate">1</span></div>
+      <input type="range" id="lfo_rate" min="0" max="255" value="1">
+      <div class="hint">0 = off · 1 ≈ 6 Hz · higher = faster vibrato</div>
+    </div>
+    <div class="row">
+      <div class="lbl"><span>Depth</span><span class="val" id="v_lfo_depth">4</span></div>
+      <input type="range" id="lfo_depth" min="0" max="15" value="4">
+      <div class="hint">0 = deepest FM · 15 = shallowest</div>
+    </div>
+  </div>
+</div>
+
+<div class="grid" id="voicePanels"></div>
+
+<div class="note">
+  Uses the browser <b>Web Serial API</b> (Chrome / Edge / Opera). Connect to the
+  iCEBreaker's virtual COM port, e.g. <code>/dev/cu.usbserial-*</code> on macOS
+  or <code>/dev/ttyUSB1</code> on Linux, at <b>115200 baud</b>. Moving a fader
+  sends the frame <code>EE <i>param</i> <i>value</i></code> over the onboard
+  FT2232H UART — pin 6 (RX) / pin 9 (TX).
+</div>
+
+<script>
+"use strict";
+
+const SYNC = 0xEE;
+const P_LFO_RATE  = 0x10;
+const P_LFO_DEPTH = 0x11;
+const P_VOICE0    = 0x20;
+const P_DETUNE0   = 0x30;
+
+const VOICE_NAMES = ["A2", "C#3", "E3", "A3", "B3", "C4", "E4", "A4"];
+
+let port = null;
+let writer = null;
+
+// ---- UI wiring -----------------------------------------------------------
+function buildVoicePanels() {
+  const grid = document.getElementById("voicePanels");
+  for (let i = 0; i < 8; i++) {
+    const panel = document.createElement("div");
+    panel.className = "panel";
+
+    // level row
+    const lbl = document.createElement("div");
+    lbl.className = "lbl";
+    const spanName = document.createElement("span");
+    spanName.textContent = "Osc " + i + " (" + VOICE_NAMES[i] + ")";
+    const spanVal = document.createElement("span");
+    spanVal.className = "val";
+    spanVal.id = "v_voice_" + i;
+    spanVal.textContent = "255";
+    lbl.appendChild(spanName);
+    lbl.appendChild(spanVal);
+
+    const input = document.createElement("input");
+    input.type = "range";
+    input.min = "0"; input.max = "255"; input.value = "255";
+    input.id = "voice_" + i;
+    input.addEventListener("input", () => {
+      spanVal.textContent = input.value;
+      sendParam(P_VOICE0 + i, Number(input.value));
+    });
+
+    // detune row
+    const dlbl = document.createElement("div");
+    dlbl.className = "lbl";
+    const dName = document.createElement("span");
+    dName.textContent = "Detune";
+    const dVal = document.createElement("span");
+    dVal.className = "val";
+    dVal.id = "d_voice_" + i;
+    dVal.textContent = "x1.00";
+    dlbl.appendChild(dName);
+    dlbl.appendChild(dVal);
+
+    const dinput = document.createElement("input");
+    dinput.type = "range";
+    dinput.min = "0"; dinput.max = "255"; dinput.value = "128";
+    dinput.id = "detune_" + i;
+    dinput.addEventListener("input", () => {
+      dVal.textContent = "x" + (Number(dinput.value) / 128).toFixed(2);
+      sendParam(P_DETUNE0 + i, Number(dinput.value));
+    });
+
+    panel.appendChild(lbl);
+    panel.appendChild(input);
+    panel.appendChild(dlbl);
+    panel.appendChild(dinput);
+    grid.appendChild(panel);
+  }
+}
+
+document.getElementById("lfo_rate").addEventListener("input", (e) => {
+  document.getElementById("v_lfo_rate").textContent = e.target.value;
+  sendParam(P_LFO_RATE, Number(e.target.value));
+});
+document.getElementById("lfo_depth").addEventListener("input", (e) => {
+  document.getElementById("v_lfo_depth").textContent = e.target.value;
+  sendParam(P_LFO_DEPTH, Number(e.target.value));
+});
+
+// ---- Serial --------------------------------------------------------------
+function setStatus(text, on) {
+  const el = document.getElementById("status");
+  el.textContent = text;
+  el.className = on ? "on" : "";
+}
+
+async function connect() {
+  if (!("serial" in navigator)) {
+    setStatus("Web Serial API not available - use Chrome/Edge/Opera", false);
+    return;
+  }
+  try {
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200 });
+    writer = port.writable.getWriter();
+    setStatus("connected @ 115200", true);
+    document.getElementById("connect").textContent = "Disconnect";
+    document.getElementById("connect").classList.add("secondary");
+  } catch (err) {
+    if (err.name === "NotFoundError") return; // user cancelled
+    setStatus("error: " + err.message, false);
+  }
+}
+
+async function disconnect() {
+  try { if (writer) { writer.releaseLock(); writer = null; } } catch (_) {}
+  try { if (port) { await port.close(); port = null; } } catch (_) {}
+  setStatus("no port connected", false);
+  document.getElementById("connect").textContent = "Connect";
+  document.getElementById("connect").classList.remove("secondary");
+}
+
+async function sendParam(param, value) {
+  if (!port || !writer) return;
+  // guard against overflow / out-of-range values
+  const b = new Uint8Array([SYNC, param & 0xff, value & 0xff]);
+  try {
+    await writer.write(b);
+  } catch (err) {
+    setStatus("write error: " + err.message, false);
+  }
+}
+
+// ---- boot ----------------------------------------------------------------
+document.getElementById("connect").addEventListener("click", () => {
+  if (port && port.readable != null) disconnect();
+  else connect();
+});
+
+buildVoicePanels();
+</script>
+</body>
+</html>
