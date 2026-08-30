@@ -42,21 +42,46 @@ module top (
     localparam [31:0] TW7 = 32'd157482;   // A4   440.00 Hz
 
     //====================================================================
+    // LFO (also an oscillator): slow phasor advancing EVERY clock.
+    //   Its sine output scales a "modulation offset" added to every
+    //   carrier's per-clock tuning word => each carrier osc is frequency
+    //   modulated by a sub-audio LFO osc (audio-rate FM = phase modulation).
+    //     TLFO = round(lfo_hz * 2^32 / 12e6)
+    //   LFO_SHIFT scales the sine sample down to a tuning-word-sized offset.
+    //====================================================================
+    localparam [31:0] TLFO      = 32'd2147;   // ~6 Hz
+    localparam integer LFO_SHIFT = 4;          // max |offset| ~ +/-2048 TW units
+
+    reg [31:0] lfo_phase = 32'd0;
+    always @(posedge CLK) lfo_phase <= lfo_phase + TLFO;
+
+    // LFO is itself an oscillator: its own small 256-entry sine wavetable
+    // (kept separate from the carrier table so each keeps a single read port
+    //  and the carrier stays in BRAM).
+    reg [15:0] lfo_lut [0:255];
+    initial $readmemh("src/mem/lfo.mem", lfo_lut);
+    wire [15:0] lfo_cos = lfo_lut[lfo_phase[31:24]];
+
+    // Scale the LFO sine (offset-then-shift) to a tuning-word-sized FM offset.
+    wire signed [31:0] lfo_off = ($signed({1'b0, lfo_cos}) - 32'sd32768) >>> LFO_SHIFT;
+
+    //====================================================================
     // DDS phase accumulators, each advances EVERY clock.
     //   phase[i][31:22] scans the 1024-entry wavetable at voice i's pitch
+    //   Each voice's tuning word is nudged by the LFO offset each clock.
     //====================================================================
     reg [31:0] phase [0:7];
     integer p;
     initial for (p = 0; p < 8; p = p + 1) phase[p] = 32'd0;
     always @(posedge CLK) begin
-        phase[0] <= phase[0] + TW0;
-        phase[1] <= phase[1] + TW1;
-        phase[2] <= phase[2] + TW2;
-        phase[3] <= phase[3] + TW3;
-        phase[4] <= phase[4] + TW4;
-        phase[5] <= phase[5] + TW5;
-        phase[6] <= phase[6] + TW6;
-        phase[7] <= phase[7] + TW7;
+        phase[0] <= phase[0] + TW0 + lfo_off;
+        phase[1] <= phase[1] + TW1 + lfo_off;
+        phase[2] <= phase[2] + TW2 + lfo_off;
+        phase[3] <= phase[3] + TW3 + lfo_off;
+        phase[4] <= phase[4] + TW4 + lfo_off;
+        phase[5] <= phase[5] + TW5 + lfo_off;
+        phase[6] <= phase[6] + TW6 + lfo_off;
+        phase[7] <= phase[7] + TW7 + lfo_off;
     end
 
     //====================================================================
@@ -68,7 +93,8 @@ module top (
     //====================================================================
     // Time-multiplexed wavetable reads + running sum.
     //   slot  : 0..NVOICE-1, addresses phase[slot] each clock
-    //   slot_d: slot delayed 1 clock (matches when wdata is available)
+    //   slot_d: slot delayed 1 clock (waddr latency)
+    //   slot_dd: slot delayed 2 clocks (matches wdata's BRAM read latency)
     //   acc   : accumulates each voice's signed sine value
     // One complete NVOICE-voice sum is latched each cycle.
     //====================================================================
@@ -76,19 +102,22 @@ module top (
 
     reg [2:0]  slot  = 3'd0;
     reg [2:0]  slot_d= 3'd0;
+    reg [2:0]  slot_dd=3'd0;
     reg [9:0]  waddr = 10'd0;
-    wire [15:0] wdata = sine_table[waddr];
+    reg [15:0] wdata = 16'd0;          // synchronous (registered) ROM read -> BRAM
     reg signed [21:0] acc = 22'sd0;
     reg signed [15:0] sample = 16'sd0;
 
     always @(posedge CLK) begin
         slot   <= slot + 3'd1;
         slot_d <= slot;
-        waddr  <= phase[slot][31:22];          // wdata=rom[phase[slot]] next clk
+        slot_dd<= slot_d;             // matches wdata latency (2 clocks after addr)
+        waddr  <= phase[slot][31:22];
+        wdata  <= sine_table[waddr];  // BRAM synchronous read port
 
-        if (slot_d == NM1) begin
+        if (slot_dd == NM1) begin
             // last voice: acc holds first N-1, add N-1 and scale by 1/N
-            acc    <= 22'sd0;                  // reset accumulator for next cycle
+            acc    <= 22'sd0;          // reset accumulator for next cycle
             sample <= (acc + $signed({1'b0, wdata}) - 17'sd32768) >>> 3;
         end else begin
             acc <= acc + $signed({1'b0, wdata}) - 17'sd32768;

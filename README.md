@@ -14,6 +14,10 @@ streamed over **I2S to a PCM5102A DAC**.
 - Each oscillator's phase accumulator advances on **every** 12 MHz clock;
   the single-port BRAM wavetable is time-multiplexed across voices and
   accumulated, so the output always tracks the current phases (no glitches)
+- A **shared LFO** (itself an oscillator with its own phase accumulator and
+  a small 256-entry sine wavetable) frequency-modulates all 8 voices:
+  `phase[i] += TW[i] + lfo_off`. Audio-rate FM ≡ PM here, so this gives the
+  whole chord a slow ~6 Hz vibrato / ensemble wobble.
 - 16-bit signed samples, summed mix scaled by 1/8 to avoid clipping
 - I2S serializer: 16-bit per channel, mono duplicated on both channels
 - Sample/frame rate ≈ 187.5 kHz (12 MHz / 64), BCK ~6 MHz
@@ -21,6 +25,11 @@ streamed over **I2S to a PCM5102A DAC**.
 
 Change the chord by editing the `TW0..TW7` tuning words in `src/top.sv`:
 `tuning = round(freq * 2^32 / 12e6)` (e.g. 220 Hz → 78741).
+
+LFO parameters in `src/top.sv`:
+- `TLFO` = round(lfo_hz * 2^32 / 12e6) (default ~6 Hz)
+- `LFO_SHIFT` = right-shift applied to the LFO sine to get a tuning-word-sized
+  FM offset (smaller shift = deeper modulation). Table: `src/mem/lfo.mem`.
 
 ## Wiring: PCM5102A DAC -> PMOD1A
 
