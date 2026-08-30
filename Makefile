@@ -6,7 +6,7 @@ all: $(BUILD)/$(TOP).bin
 $(BUILD):
 	mkdir -p $(BUILD)
 
-SRCS = src/top.sv src/uart.sv src/periph/midi_over_serial.sv
+SRCS = src/top.sv src/uart.sv src/periph/midi_over_serial.sv src/periph/frame_buffer.sv src/periph/frame_receiver.sv src/dsp/resynth.sv
 
 $(BUILD)/$(TOP).json: $(SRCS) | $(BUILD)
 	yosys -p "read_verilog -sv $(SRCS); synth_ice40 -top $(TOP) -json $@"
