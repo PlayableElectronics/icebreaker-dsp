@@ -9,6 +9,7 @@ module top (
         counter <= counter + 1'b1;
     end
 
-    assign led = counter[23];
+    // iCEBreaker RGB red LED is active-low
+    assign led = ~counter[23];
 
 endmodule
