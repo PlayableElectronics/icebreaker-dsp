@@ -59,11 +59,12 @@ module top (
         end
     end
 
-    // UART command-parser state (declared early: the detune precompute uses
-    // these to detect a detune-param write). Set by the parser section below.
-    reg [1:0] ucmd = 2'd0;          // 0 await SYNC, 1 PARAM, 2 VALUE
+    // UART-related state: we keep track of the last applied parameter so the
+    // detune-recompute pipeline can observe writes (uapplied pulses) and the
+    // TX echo can confirm the applied value.
     reg [7:0] uparam = 8'd0;
     reg       uapplied = 1'b0;      // pulses after each applied VALUE
+    reg [7:0] last_applied = 8'd0;
 
     //====================================================================
     // LFO (also an oscillator): slow phasor advancing EVERY clock.
@@ -222,10 +223,9 @@ module top (
     assign dout = sample[16 - i2s[4:1]];
 
     //====================================================================
-    // UART command parser: framed 3-byte messages from the host UI.
-    //   [SYNC 0xEE][PARAM][VALUE]  ->  params[PARAM] <= VALUE
-    //   A malformed stream re-syncs by waiting for the next SYNC byte.
-    //   The VALUE is echoed back over TX as confirmation.
+    // UART command parser: replaced by midi_over_serial bridge below.
+    //   Incoming bytes (uart_rx_valid / uart_rx_data) are fed to the bridge,
+    //   which emits single-cycle writes (midi_write + midi_addr + midi_value).
     //====================================================================
     wire        uart_rx_valid;
     wire [7:0]  uart_rx_data;
@@ -247,33 +247,33 @@ module top (
         .tx        (uart_tx)
     );
 
-    // Frame state machine: ucmd = which byte we expect next.
-    //   ucmd 0 = awaiting SYNC, 1 = awaiting PARAM, 2 = awaiting VALUE.
-    // A byte equal to SYNC always (re)syncs a fresh frame, so a malformed
-    // or misaligned stream recovers as soon as the next SYNC arrives.
-    // UART command parser (state/uparam/uapplied declared at top of module).
+    // Instantiate the MIDI-over-serial bridge
+    wire midi_write;
+    wire [5:0] midi_addr;
+    wire [7:0] midi_value;
+
+    midi_over_serial midi_bridge (
+        .clk      (CLK),
+        .rx_valid (uart_rx_valid),
+        .rx_data  (uart_rx_data),
+        .write    (midi_write),
+        .addr     (midi_addr),
+        .value    (midi_value)
+    );
+
+    // Apply writes emitted by the bridge into the params[] register file.
     always @(posedge CLK) begin
         uapplied <= 1'b0;               // default: no new applied command
-        if (uart_rx_valid) begin
-            if (uart_rx_data == P_SYNC) begin
-                ucmd <= 2'd1;                 // (re)sync: new frame starting
-            end else begin
-                case (ucmd)
-                    2'd0: ucmd <= 2'd0;                      // await SYNC, ignore
-                    2'd1: begin uparam <= uart_rx_data; ucmd <= 2'd2; end
-                    2'd2: begin
-                              params[uparam[5:0]] <= uart_rx_data;
-                              uapplied <= 1'b1;               // echo this value
-                              ucmd <= 2'd0;
-                          end
-                    default: ucmd <= 2'd0;
-                endcase
-            end
+        if (midi_write) begin
+            params[midi_addr] <= midi_value;
+            uparam <= {2'd0, midi_addr};
+            last_applied <= midi_value;
+            uapplied <= 1'b1;               // echo this value
         end
     end
 
     // Echo the freshly-applied VALUE back to the host (confirmation of receipt).
-    assign uart_tx_data = uart_rx_data;
+    assign uart_tx_data = last_applied;
     assign uart_tx_go   = uapplied && !uart_tx_busy;
 
     // ------- Status LED (diagnostic, blinks with audio sign) -------
