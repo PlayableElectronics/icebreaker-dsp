@@ -19,3 +19,5 @@ Example (pseudocode):
   frame = [0xF0, COUNT, ENTRY0(7b), ENTRY1(7b), ..., 0xF1]
 
 Where ENTRY = [PHASE_INC(4), AMP(2), FLAGS(1)].
+
+Rebuild trigger: 2026-08-30T19:57:00Z
