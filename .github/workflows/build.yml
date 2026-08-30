@@ -1,0 +1,26 @@
+name: Build iCEBreaker
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install OSS CAD Suite
+        uses: YosysHQ/setup-oss-cad-suite@v4
+
+      - name: Build FPGA bitstream
+        run: make
+
+      - name: Upload bitstream
+        uses: actions/upload-artifact@v4
+        with:
+          name: icebreaker-bitstream
+          path: build/*.bin

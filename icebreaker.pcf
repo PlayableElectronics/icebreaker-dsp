@@ -1,0 +1,5 @@
+# iCEBreaker clock
+set_io clk 35
+
+# iCEBreaker LED
+set_io led 39
