@@ -46,11 +46,30 @@
 <body>
 
 <h1>iCEBreaker DSP Controller</h1>
-<div class="sub">8-voice sine bank · LFO FM · PCM5102A I2S DAC · host link via serial</div>
+<div class="sub">Sine bank / experimental FM voice · PCM5102A I2S DAC · host link via serial</div>
 
 <div class="bar">
   <button id="connect">Connect</button>
   <span id="status">no port connected</span>
+</div>
+
+<div class="grid">
+  <div class="panel">
+    <h2>FM Voice</h2>
+    <button id="fm_strike" type="button">Strike FM Voice</button>
+    <div class="row">
+      <div class="lbl"><span>Amplitude</span><span class="val" id="v_fm_amp">180</span></div>
+      <input type="range" id="fm_amp" min="0" max="255" value="180">
+    </div>
+    <div class="row">
+      <div class="lbl"><span>Brightness</span><span class="val" id="v_fm_width">24</span></div>
+      <input type="range" id="fm_width" min="0" max="255" value="24">
+    </div>
+    <div class="row">
+      <div class="lbl"><span>Damping</span><span class="val" id="v_fm_damp">2</span></div>
+      <input type="range" id="fm_damp" min="0" max="255" value="2">
+    </div>
+  </div>
 </div>
 
 <div class="grid">
@@ -85,6 +104,10 @@
 const SYNC = 0xEE;
 const P_LFO_RATE  = 0x10;
 const P_LFO_DEPTH = 0x11;
+const P_FM_STRIKE = 0x12;
+const P_FM_AMP    = 0x13;
+const P_FM_WIDTH  = 0x14;
+const P_FM_DAMP   = 0x15;
 const P_VOICE0    = 0x20;
 const P_DETUNE0   = 0x30;
 
@@ -158,6 +181,21 @@ document.getElementById("lfo_depth").addEventListener("input", (e) => {
   document.getElementById("v_lfo_depth").textContent = e.target.value;
   sendParam(P_LFO_DEPTH, Number(e.target.value));
 });
+
+document.getElementById("fm_strike").addEventListener("click", () => {
+  sendParam(P_FM_STRIKE, 1);
+});
+
+for (const [id, valueId, param] of [
+  ["fm_amp", "v_fm_amp", P_FM_AMP],
+  ["fm_width", "v_fm_width", P_FM_WIDTH],
+  ["fm_damp", "v_fm_damp", P_FM_DAMP]
+]) {
+  document.getElementById(id).addEventListener("input", (e) => {
+    document.getElementById(valueId).textContent = e.target.value;
+    sendParam(param, Number(e.target.value));
+  });
+}
 
 // ---- Serial --------------------------------------------------------------
 function setStatus(text, on) {

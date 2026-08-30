@@ -711,6 +711,29 @@ Adding a small noise component may help produce a hand-like percussive attack.
 
 ---
 
+# Per-Strike Voice Parameters
+
+Every strike must have an independent parameter set, either carried with the
+trigger event or selected from a per-note voice slot. These parameters must
+affect the generated sound rather than being placeholder controls:
+
+* pitch / waveguide delay
+* strike amplitude and velocity
+* strike position
+* strike width and shape
+* excitation hardness / pressure
+* neighbour coupling
+* restoring stiffness
+* damping / decay
+* modal balance and inharmonicity
+* body/reverb send and stereo spread
+
+The Csound `wgbow` reference demonstrates the importance of smooth pressure
+variation, resonant feedback, multiple related modes, and body reverb. The FPGA
+voice should preserve these roles while using smaller fixed-point structures.
+
+---
+
 # Handpan-Like Inharmonicity
 
 A real handpan note is not a simple harmonic oscillator.

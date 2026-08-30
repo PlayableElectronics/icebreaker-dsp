@@ -95,3 +95,47 @@ the transport the future MIDI/opcode parameter stream will ride on.
 ```bash
 openFPGALoader -v -b ice40_generic build/top.bin
 ```
+
+## Offline voice reference
+
+`reference/wgbow_handpan.csd` is a Csound reference patch based on the
+`wgbow` example: shaped percussive excitation, a resonant waveguide body, and
+stereo feedback reverb. Render or audition it with:
+
+```bash
+csound reference/wgbow_handpan.csd
+```
+
+`reference/handpan_strikes.csd` extends this into independent strike events.
+Each event has its own pitch, level, pressure range, attack, reverb send, pan,
+and decay parameters.
+
+`reference/04G09_wgbow_exact.csd` is an unchanged copy of the supplied Iain
+McCurdy example and should be used as the sonic baseline.
+
+`reference/waveguide_voice.dsp` is the first Faust implementation of the
+portable voice building blocks: strike envelope, pressure exciter, feedback
+comb waveguide, damping inside the feedback loop, and two body modes. It
+compiles with:
+
+```bash
+faust -lang cpp -o /tmp/waveguide_voice.cpp reference/waveguide_voice.dsp
+```
+
+`reference/smart_bell_voice.dsp` is the current sound-design reference. It
+uses Faust physical-model strike and modal bell models with position-dependent
+excitation and long decay, matching the supplied SmartKeyboard example.
+
+`reference/english_bell_voice.dsp` isolates one playable voice from that model.
+It is the intended prototype for the nine-note voice bank.
+
+To generate a modal dataset from an isolated render:
+
+```bash
+faust2sndfile reference/english_bell_strike.dsp
+reference/english_bell_strike /tmp/english_bell_strike.wav -s 352800
+python3 tools/extract_modal.py /tmp/english_bell_strike.wav \
+  --fundamental 220 --modes 10 \
+  --json reference/english_bell_modal.json \
+  --verilog reference/english_bell_modal.vh
+```
