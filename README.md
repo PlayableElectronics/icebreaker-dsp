@@ -1,6 +1,6 @@
 # iCEBreaker DSP
 
-Open-source iCEBreaker FPGA DSP project: a **single sine oscillator**
+Open-source iCEBreaker FPGA DSP project: an **8-voice sine oscillator bank**
 streamed over **I2S to a PCM5102A DAC**.
 
 ## Target
@@ -10,14 +10,16 @@ streamed over **I2S to a PCM5102A DAC**.
 
 ## Functionality
 
-- One DDS sine oscillator (default A3 = 220 Hz), 16-bit signed samples
-- Phase accumulator advances on every 12 MHz clock; combinational-ish BRAM
-  wavetable read means the sample always tracks the current phase (no glitches)
+- 8 DDS sine oscillators (A2, C#3, E3, A3, B3, C4, E4, A4) summed into a chord
+- Each oscillator's phase accumulator advances on **every** 12 MHz clock;
+  the single-port BRAM wavetable is time-multiplexed across voices and
+  accumulated, so the output always tracks the current phases (no glitches)
+- 16-bit signed samples, summed mix scaled by 1/8 to avoid clipping
 - I2S serializer: 16-bit per channel, mono duplicated on both channels
 - Sample/frame rate ≈ 187.5 kHz (12 MHz / 64), BCK ~6 MHz
 - Architecture mirrors the proven `noscene/ice40_audio` PCM5102 driver
 
-Change frequency by editing the `TW` tuning word in `src/top.sv`:
+Change the chord by editing the `TW0..TW7` tuning words in `src/top.sv`:
 `tuning = round(freq * 2^32 / 12e6)` (e.g. 220 Hz → 78741).
 
 ## Wiring: PCM5102A DAC -> PMOD1A
@@ -43,3 +45,9 @@ make
 
 Bitstream: `build/top.bin` (program with `iceprog`, or via the iCEBreaker FTDI).
 GitHub Actions CI builds and uploads the bitstream as an artifact on every push.
+
+## Fast test loop
+
+```bash
+openFPGALoader -v -b ice40_generic build/top.bin
+```
