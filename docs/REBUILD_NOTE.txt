@@ -1,0 +1,2 @@
+// quick improvement: chunk writes in the web helper to reduce host FTDI stress
+// patch index.html helper: replace direct writer.write(buf) with chunked writes
