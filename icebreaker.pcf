@@ -1,2 +1,16 @@
+# clock (12 MHz)
 set_io CLK 35
+
+# on-board LED (active low)
 set_io LEDR_N 11
+
+# PCM5102A I2S DAC on PMOD1A
+#   PMOD1A pin 1 -> FPGA 4   -> BCK  (bit clock)
+#   PMOD1A pin 2 -> FPGA 2   -> LRCK (word select)
+#   PMOD1A pin 3 -> FPGA 47  -> DIN  (serial data)
+set_io bclk 4
+set_io lrck 2
+set_io dout 47
+
+# PCM5102A soft-mute (high = un-muted)
+set_io xmute 3
